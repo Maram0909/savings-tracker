@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>My Savings Tracker</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{--bg:#f5f7f3;--card:#ffffff;--ink:#1c2a23;--mute:#6a7871;--line:#e1e6e0;--g:#1d8a59;--r:#c5443a;--soft:#e9f4ee}
+@media (prefers-color-scheme:dark){:root{--bg:#111714;--card:#1a221e;--ink:#e8f0ea;--mute:#98a79e;--line:#2a352e;--g:#4cc98d;--r:#ef7d73;--soft:#1f2d26;color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+body{padding:16px;max-width:880px;margin:0 auto}
+h1{font-size:20px;margin:4px 0}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:8px}
+.top span{color:var(--mute);font-size:13px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.card small{color:var(--mute);display:block;font-size:12px;margin-bottom:4px}
+.card b{font-size:20px}
+.big{background:var(--soft);grid-column:1/-1}
+.big b{font-size:30px}
+.pos{color:var(--g)}.neg{color:var(--r)}
+.nav{display:flex;align-items:center;justify-content:space-between;margin:6px 0 10px;gap:8px}
+.nav h2{font-size:17px;margin:0;text-align:center;flex:1}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:8px 12px}
+button.primary{background:var(--g);color:#fff;border-color:var(--g)}
+button:disabled{opacity:.6;cursor:default}
+.wrap{overflow-x:auto}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr)) minmax(64px,.9fr);gap:4px;min-width:520px}
+.dow{font-size:11px;color:var(--mute);text-align:center;padding:4px 0}
+.day{background:var(--card);border:1px solid var(--line);border-radius:10px;min-height:62px;padding:5px 6px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer}
+.day.blank{background:transparent;border-color:transparent;cursor:default}
+.day.today{outline:2px solid var(--g)}
+.day.sel{background:var(--soft);border-color:var(--g)}
+.day .n{font-size:12px;color:var(--mute)}
+.day .v{font-size:12px;font-weight:600;word-break:break-all}
+.wk{background:var(--soft);border-radius:10px;padding:5px 6px;display:flex;flex-direction:column;justify-content:center;font-size:12px;font-weight:600;text-align:center}
+.wk span{font-size:10px;color:var(--mute);font-weight:400}
+#panel{margin-top:14px;display:none}
+#panel h3{margin:0 0 10px;font-size:16px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+input,select{font:inherit;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:9px 10px;min-width:0}
+input.amt{width:120px}input.note{flex:1;min-width:120px}
+.tx{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--line);gap:8px}
+.tx .x{padding:4px 9px}
+.foot{margin-top:16px;color:var(--mute);font-size:12px}
+.foot input{width:80px;padding:5px 8px}
+.empty{color:var(--mute);font-size:13px}
+#auth{max-width:360px;margin:8vh auto 0}
+#auth .card{display:flex;flex-direction:column;gap:10px;padding:20px}
+#auth input{width:100%}
+#err{color:var(--r);font-size:13px;min-height:18px}
+.link{background:none;border:none;color:var(--g);padding:0;text-decoration:underline}
+</style>
+</head>
+<body>
+
+<div id="auth" style="display:none">
+  <h1 style="text-align:center;margin-bottom:14px">💰 My Savings Tracker</h1>
+  <div class="card">
+    <input id="aName" placeholder="Your name" autocomplete="name" style="display:none">
+    <input id="aUser" placeholder="Username" autocomplete="username" autocapitalize="none">
+    <input id="aPass" type="password" placeholder="Password (6+ characters)" autocomplete="current-password">
+    <div id="err"></div>
+    <button class="primary" id="aGo">Log in</button>
+    <div style="text-align:center;font-size:13px"><span id="aText">No account yet?</span> <button class="link" id="aSwitch">Sign up</button></div>
+  </div>
+</div>
+
+<div id="app" style="display:none">
+  <div class="top">
+    <div><h1>💰 My Savings Tracker</h1><span id="hello"></span></div>
+    <button id="logout">Log out</button>
+  </div>
+  <div class="cards">
+    <div class="card big"><small>Total savings (all time)</small><b id="total">0</b></div>
+    <div class="card"><small>Saved this month</small><b id="mIn" class="pos">0</b></div>
+    <div class="card"><small>Withdrawn this month</small><b id="mOut" class="neg">0</b></div>
+    <div class="card"><small>Net this month</small><b id="mNet">0</b></div>
+  </div>
+  <div class="nav">
+    <button id="prev" aria-label="Previous month">‹</button>
+    <h2 id="title"></h2>
+    <button id="next" aria-label="Next month">›</button>
+  </div>
+  <div class="wrap"><div class="cal" id="cal"></div></div>
+  <div class="card" id="panel">
+    <h3 id="pTitle"></h3>
+    <div class="row">
+      <select id="type"><option value="d">➕ Saved</option><option value="w">➖ Withdrew</option></select>
+      <input id="amt" class="amt" type="number" min="0" step="any" inputmode="decimal" placeholder="Amount">
+      <input id="note" class="note" type="text" placeholder="Note (optional)">
+      <button class="primary" id="add">Add</button>
+    </div>
+    <div id="list"></div>
+  </div>
+  <div class="foot">Currency: <input id="cur" maxlength="5"> · Your data is stored online in your account.</div>
+</div>
+
+<script>
+/* ====== 1) PASTE YOUR SUPABASE VALUES HERE ====== */
+var SUPABASE_URL = "https://jqnxefjwdgezicnjpibe.supabase.co";
+var SUPABASE_KEY = "sb_publishable_XFPD05D9Y1-gn0yk_9V2bw_3_9hOPYm";
+/* ================================================ */
+
+var $=function(i){return document.getElementById(i)};
+var sb=null,user=null,store={data:{}},mode="login";
+try{sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY)}catch(e){}
+var DOMAIN="@mysavings.app";
+var cur="TND";try{cur=localStorage.getItem("sv-cur")||"TND"}catch(e){}
+
+/* ---------- Auth ---------- */
+function setMode(m){
+  mode=m;
+  $("aName").style.display=m==="signup"?"block":"none";
+  $("aGo").textContent=m==="signup"?"Create account":"Log in";
+  $("aText").textContent=m==="signup"?"Already have an account?":"No account yet?";
+  $("aSwitch").textContent=m==="signup"?"Log in":"Sign up";
+  $("aPass").autocomplete=m==="signup"?"new-password":"current-password";
+  $("err").textContent="";
+}
+$("aSwitch").onclick=function(){setMode(mode==="login"?"signup":"login")};
+$("aGo").onclick=async function(){
+  var u=$("aUser").value.trim().toLowerCase(),p=$("aPass").value,n=$("aName").value.trim();
+  var err=$("err");err.textContent="";
+  if(!sb||SUPABASE_URL.indexOf("PASTE")===0){err.textContent="Setup missing: paste your Supabase URL and key in the file.";return}
+  if(!/^[a-z0-9_.-]{3,30}$/.test(u)){err.textContent="Username: 3–30 letters, numbers, . _ - (no spaces).";return}
+  if(p.length<6){err.textContent="Password must be at least 6 characters.";return}
+  if(mode==="signup"&&!n){err.textContent="Please enter your name.";return}
+  $("aGo").disabled=true;
+  try{
+    var res;
+    if(mode==="signup"){
+      res=await sb.auth.signUp({email:u+DOMAIN,password:p,options:{data:{name:n,username:u}}});
+      if(res.error)throw res.error;
+      if(!res.data.session)throw new Error("Account created, but email confirmation is still ON in Supabase. Turn it off (see setup steps), then log in.");
+    }else{
+      res=await sb.auth.signInWithPassword({email:u+DOMAIN,password:p});
+      if(res.error)throw res.error;
+    }
+    await enter(res.data.user);
+  }catch(e){
+    var m=e.message||"Something went wrong.";
+    if(/invalid login/i.test(m))m="Wrong username or password.";
+    if(/already registered/i.test(m))m="This username is already taken.";
+    err.textContent=m;
+  }
+  $("aGo").disabled=false;
+};
+$("logout").onclick=async function(){
+  await sb.auth.signOut();user=null;store={data:{}};sel=null;
+  $("app").style.display="none";$("auth").style.display="block";$("aPass").value="";
+};
+async function enter(u){
+  user=u;store={data:{}};
+  var from=0,size=1000;
+  while(true){
+    var r=await sb.from("transactions").select("id,day,type,amount,note").order("created_at").range(from,from+size-1);
+    if(r.error){alert("Could not load data: "+r.error.message);break}
+    r.data.forEach(function(x){(store.data[x.day]=store.data[x.day]||[]).push({id:x.id,t:x.type,a:parseFloat(x.amount),n:x.note||""})});
+    if(r.data.length<size)break;from+=size;
+  }
+  var md=u.user_metadata||{};
+  $("hello").textContent="Hi "+(md.name||md.username||"")+" 👋";
+  $("auth").style.display="none";$("app").style.display="block";
+  render();
+}
+
+/* ---------- Calendar ---------- */
+var now=new Date(),Y=now.getFullYear(),M=now.getMonth(),sel=null;
+var MN=["January","February","March","April","May","June","July","August","September","October","November","December"];
+function key(y,m,d){return y+"-"+String(m+1).padStart(2,"0")+"-"+String(d).padStart(2,"0")}
+function net(k){var t=0;(store.data[k]||[]).forEach(function(x){t+=x.t==="d"?x.a:-x.a});return t}
+function f(n){return n.toLocaleString(undefined,{maximumFractionDigits:2})}
+function sg(n){return (n>0?"+":n<0?"−":"")+f(Math.abs(n))}
+function cls(n){return n>0?"pos":n<0?"neg":""}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+function render(){
+  $("cur").value=cur;
+  $("title").textContent=MN[M]+" "+Y;
+  var off=(new Date(Y,M,1).getDay()+6)%7,dim=new Date(Y,M+1,0).getDate(),h="";
+  ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].forEach(function(d){h+='<div class="dow">'+d+'</div>'});
+  h+='<div class="dow">Week</div>';
+  var rows=Math.ceil((off+dim)/7),mIn=0,mOut=0,today=key(now.getFullYear(),now.getMonth(),now.getDate());
+  for(var r=0;r<rows;r++){
+    var wt=0,any=false;
+    for(var c=0;c<7;c++){
+      var d=r*7+c-off+1;
+      if(d<1||d>dim){h+='<div class="day blank"></div>';continue}
+      var k=key(Y,M,d),n=net(k),tx=store.data[k]||[];
+      tx.forEach(function(x){if(x.t==="d")mIn+=x.a;else mOut+=x.a});
+      wt+=n;any=true;
+      h+='<div class="day'+(k===sel?" sel":"")+(k===today?" today":"")+'" data-k="'+k+'"><span class="n">'+d+'</span><span class="v '+cls(n)+'">'+(tx.length?sg(n):"")+'</span></div>';
+    }
+    h+='<div class="wk"><span>Week '+(r+1)+'</span><b class="'+cls(wt)+'">'+(any?sg(wt):"")+'</b></div>';
+  }
+  $("cal").innerHTML=h;
+  var all=0;Object.keys(store.data).forEach(function(k){all+=net(k)});
+  $("total").textContent=f(all)+" "+cur;$("total").className=cls(all);
+  $("mIn").textContent=f(mIn);$("mOut").textContent=f(mOut);
+  var mn=mIn-mOut;$("mNet").textContent=sg(mn);$("mNet").className=cls(mn);
+  renderPanel();
+}
+function renderPanel(){
+  var p=$("panel");
+  if(!sel){p.style.display="none";return}
+  p.style.display="block";
+  var q=sel.split("-"),dt=new Date(+q[0],+q[1]-1,+q[2]);
+  $("pTitle").textContent=dt.toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long",year:"numeric"})+" · "+sg(net(sel))+" "+cur;
+  var tx=store.data[sel]||[],h="";
+  if(!tx.length)h='<div class="empty">Nothing recorded for this day yet.</div>';
+  tx.forEach(function(x,i){
+    h+='<div class="tx"><span>'+(x.t==="d"?"➕":"➖")+' <b class="'+(x.t==="d"?"pos":"neg")+'">'+f(x.a)+'</b> '+esc(x.n)+'</span><button class="x" data-i="'+i+'" aria-label="Delete">✕</button></div>';
+  });
+  $("list").innerHTML=h;
+}
+$("cal").addEventListener("click",function(e){
+  var el=e.target.closest(".day[data-k]");if(!el)return;
+  sel=el.getAttribute("data-k");render();
+  $("panel").scrollIntoView({behavior:"smooth",block:"nearest"});
+  $("amt").focus({preventScroll:true});
+});
+async function addTx(){
+  var a=parseFloat($("amt").value);
+  if(!sel||!(a>0))return;
+  $("add").disabled=true;
+  var r=await sb.from("transactions").insert({day:sel,type:$("type").value,amount:a,note:$("note").value.trim()||null}).select("id,day,type,amount,note").single();
+  $("add").disabled=false;
+  if(r.error){alert("Could not save: "+r.error.message);return}
+  (store.data[sel]=store.data[sel]||[]).push({id:r.data.id,t:r.data.type,a:parseFloat(r.data.amount),n:r.data.note||""});
+  $("amt").value="";$("note").value="";render();$("amt").focus({preventScroll:true});
+}
+$("add").onclick=addTx;
+$("amt").addEventListener("keydown",function(e){if(e.key==="Enter")addTx()});
+$("list").addEventListener("click",async function(e){
+  var b=e.target.closest(".x");if(!b)return;
+  var i=+b.getAttribute("data-i"),x=store.data[sel][i];
+  var r=await sb.from("transactions").delete().eq("id",x.id);
+  if(r.error){alert("Could not delete: "+r.error.message);return}
+  store.data[sel].splice(i,1);
+  if(!store.data[sel].length)delete store.data[sel];
+  render();
+});
+$("prev").onclick=function(){M--;if(M<0){M=11;Y--}render()};
+$("next").onclick=function(){M++;if(M>11){M=0;Y++}render()};
+$("cur").addEventListener("input",function(){cur=this.value;try{localStorage.setItem("sv-cur",cur)}catch(e){}render()});
+
+/* ---------- Start ---------- */
+(async function(){
+  if(sb&&SUPABASE_URL.indexOf("PASTE")!==0){
+    try{
+      var s=await sb.auth.getSession();
+      if(s.data&&s.data.session){await enter(s.data.session.user);return}
+    }catch(e){}
+  }
+  $("auth").style.display="block";
+})();
+</script>
+</body>
+</html>
